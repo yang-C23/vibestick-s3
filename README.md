@@ -8,8 +8,11 @@ into a well-structured prompt, previews a summary on the device, and — on your
 into the focused tool (you press Enter). Meanwhile the screen shows the current agent task with an
 original mascot and beeps when it needs you.
 
-**Status: M0 (design-first foundation).** The full pipeline already runs end-to-end in software via
-the mock bridge + device simulator — no hardware required yet.
+**Status: working on real hardware.** Verified end-to-end on an M5Stack StickS3 — live agent status,
+push-to-talk dictation with local Chinese STT (FunASR SenseVoice) + local LLM cleanup (Ollama/Qwen3),
+over **USB serial or Wi-Fi**, text injected into the focused app (never auto-Enter). See
+**[docs/setup.md](docs/setup.md)** to build it yourself; you can also run the whole pipeline in
+software with no hardware (below).
 
 ## Why
 
@@ -32,6 +35,19 @@ M5 sticks may work with config changes.
 See [docs/architecture.md](docs/architecture.md) · [product](docs/product.md) · [ux](docs/ux.md) ·
 [protocol](docs/protocol.md) · [integrations](docs/integrations.md) · [roadmap](docs/roadmap.md) ·
 [troubleshooting](docs/troubleshooting.md).
+
+## Quickstart (real device)
+
+Full guide: **[docs/setup.md](docs/setup.md)**. In short (macOS / Apple Silicon):
+
+```sh
+corepack enable && pnpm install
+# install local models (FunASR STT + Ollama qwen3:4b) — see docs/setup.md §1
+cd firmware/sticks3 && pio run -e sticks3 -t upload   # flash (long-press power for download mode)
+./scripts/start.sh                                     # Ollama + STT sidecar + bridge
+```
+
+Hold the **blue button** to dictate, **BtnB** cycles the target; hold **BtnB at boot** for Wi-Fi mode.
 
 ## Try it now (no hardware)
 
