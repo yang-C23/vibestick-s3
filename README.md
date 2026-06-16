@@ -60,7 +60,12 @@ node_modules/.bin/tsx apps/cli/src/index.ts ping
 node_modules/.bin/tsx apps/cli/src/index.ts send-test --agent codex --status needs_approval --phase waiting --title "git push"
 node_modules/.bin/tsx apps/cli/src/index.ts status
 node_modules/.bin/tsx apps/cli/src/index.ts pair    # 6-digit pairing code
+node_modules/.bin/tsx apps/cli/src/index.ts send "fix the bug in auth.ts" --target clipboard
+node_modules/.bin/tsx apps/cli/src/index.ts watch -- codex exec "add a README"   # streams status to the device
 ```
+
+`send` injects via the clipboard (auto-paste into the focused terminal is opt-in and **never**
+presses Enter). `watch` wraps a `codex`/`claude` run and streams its phase to the device.
 
 The `device-simulator` connects to this daemon the same way it connects to the mock bridge. After
 packaging (M7) these become the `vibestickd` and `vibestick` binaries.

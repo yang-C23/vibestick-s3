@@ -125,6 +125,78 @@ program
     console.log(`normalize:${process.env.VIBESTICK_NORMALIZER_BACKEND ?? 'deterministic'} (M4)`);
   });
 
+program
+  .command('send')
+  .description('inject text into the focused app via the bridge (clipboard; paste needs opt-in)')
+  .argument('<text>', 'text to inject')
+  .option('--target <t>', 'clipboard|terminal|claude|codex', 'clipboard')
+  .action(async (text: string, opts: { target: string }) => {
+    const r = await call<{ ok: boolean; method: string; message: string }>('POST', '/inject', {
+      text,
+      target: opts.target,
+    });
+    console.log(r.message ?? JSON.stringify(r));
+  });
+
+program
+  .command('watch')
+  .description('run an agent command and stream its status to the device')
+  .option('--agent <agent>', 'codex|claude (auto-detected from the command if omitted)')
+  .option('--title <title>', 'task title')
+  .argument('<command...>', 'the agent command, e.g. -- codex exec "fix the bug"')
+  .action(async (command: string[], opts: { agent?: string; title?: string }) => {
+    const { spawn } = await import('node:child_process');
+    const { createInterface } = await import('node:readline');
+    const { basename } = await import('node:path');
+    const { detectCodexPhase } = await import('@vibestick/integration-codex');
+    const { detectClaudePhase } = await import('@vibestick/integration-claude');
+
+    const cmd = command[0] ?? '';
+    const args = command.slice(1);
+    const agent =
+      opts.agent ?? (/claude/.test(cmd) ? 'claude' : /codex/.test(cmd) ? 'codex' : 'unknown');
+    const detect = agent === 'claude' ? detectClaudePhase : detectCodexPhase;
+    const id = `task_${Date.now()}`;
+    const title = opts.title ?? `${agent}: ${args.join(' ').slice(0, 40)}`;
+
+    const post = async (body: Record<string, unknown>): Promise<void> => {
+      try {
+        await fetch(httpBase() + '/event', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        /* keep running the command even if the daemon is down */
+      }
+    };
+
+    await post({
+      id,
+      agent,
+      status: 'running',
+      phase: 'planning',
+      title,
+      source: 'wrapper',
+      cwd: process.cwd(),
+      projectName: basename(process.cwd()),
+    });
+
+    const child = spawn(cmd, args, { stdio: ['inherit', 'pipe', 'pipe'] });
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      process.stdout.write(line + '\n');
+      const phase = detect(line);
+      if (phase)
+        void post({ id, phase, ...(phase === 'waiting' ? { status: 'needs_approval' } : {}) });
+    });
+    child.stderr.on('data', (d: Buffer) => process.stderr.write(d));
+    child.on('close', (code) => {
+      void post({ id, status: code === 0 ? 'completed' : 'failed', phase: 'summarizing' }).then(
+        () => process.exit(code ?? 0),
+      );
+    });
+  });
+
 program.parseAsync().catch((e: unknown) => {
   console.error(e);
   process.exit(1);
