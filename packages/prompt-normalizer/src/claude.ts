@@ -1,6 +1,6 @@
 import { normalizerResultSchema, type NormalizerResult } from '@vibestick/protocol';
 import type { NormalizeContext, NormalizerConfig } from './types';
-import { isValidResult, validationErrors } from './validate';
+import { coerceResult } from './validate';
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 
 // Structured-outputs schema: our JSON Schema minus keywords structured outputs
@@ -42,7 +42,8 @@ export async function claudeNormalize(
     .map((b: any) => (b?.type === 'text' ? (b.text ?? '') : ''))
     .join('');
   const obj: unknown = JSON.parse(text || '{}');
-  if (!isValidResult(obj)) throw new Error(`schema: ${validationErrors()}`);
-  return obj;
+  const coerced = coerceResult(obj);
+  if (!coerced) throw new Error('normalizer returned no usable prompt');
+  return coerced;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

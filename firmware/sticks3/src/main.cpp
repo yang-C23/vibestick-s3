@@ -29,7 +29,8 @@ bool reqAttn = false;
 int targetIdx = 0;
 uint32_t lastHeartbeat = 0, lastHello = 0;
 bool needRedraw = true;
-int16_t micbuf[MIC_CHUNK];
+int16_t micbuf[2][MIC_CHUNK]; // double-buffered: keep capturing while a frame is sent
+int micIdx = 0;
 
 static const char* TARGETS[] = {"auto", "claude", "codex", "clipboard", "terminal"};
 
@@ -58,14 +59,36 @@ static const char* hintFor(const String& st) {
   return "hold A: talk  B: target";
 }
 
+// Battery state + estimated remaining time. Uses the measured discharge current
+// when the M5PM1 reports it, otherwise a nominal ~110mA estimate (250mAh cell).
+static String batteryLine() {
+  int lvl = M5.Power.getBatteryLevel();
+  if (lvl < 0) return "battery: n/a";
+  float mA = M5.Power.getBatteryCurrent(); // + charging, - discharging, 0 if unsupported
+  bool charging = mA > 5 ? true : (mA < -5 ? false : ((int)M5.Power.isCharging() == 1));
+  char buf[56];
+  if (charging) {
+    snprintf(buf, sizeof(buf), "charging via USB");
+  } else {
+    bool measured = mA < -5;
+    float draw = measured ? -mA : 110.0f;
+    int mins = (int)((lvl / 100.0f) * 250.0f / draw * 60.0f);
+    if (measured) snprintf(buf, sizeof(buf), "~%dh%02dm left  %dmA", mins / 60, mins % 60, (int)draw);
+    else snprintf(buf, sizeof(buf), "~%dh%02dm left (est)", mins / 60, mins % 60);
+  }
+  return String(buf);
+}
+
 // ---- transport ----
 static void txMessage(JsonDocument& d) {
+  String s;
+  serializeJson(d, s);
   if (useSerial) {
-    serializeJson(d, Serial);
-    Serial.print('\n');
+    s += '\n';
+    // bulk write — char-by-char serializeJson(d, Serial) is far too slow and
+    // stalls the loop (drops mic audio) for big base64 frames.
+    Serial.write((const uint8_t*)s.c_str(), s.length());
   } else {
-    String s;
-    serializeJson(d, s);
     ws.sendTXT(s);
   }
 }
@@ -162,7 +185,7 @@ static void render() {
   g.setTextSize(1);
   g.setTextColor(linked ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
   g.setCursor(3, 4);
-  g.printf("%s%s  b%d", useSerial ? "USB " : "WiFi ", linked ? "ok" : "..",
+  g.printf("%s%s  %d%%", useSerial ? "USB " : "WiFi ", linked ? "ok" : "..",
            M5.Power.getBatteryLevel());
   g.setTextColor(TFT_CYAN, TFT_BLACK);
   g.setCursor(3, 16);
@@ -179,7 +202,8 @@ static void render() {
   g.setTextSize(2);
   g.drawCenterString(labelFor(deviceState), 67, 104);
 
-  // status block (wrapped)
+  // status block (wrapped) — Chinese-capable font for prompt/title text
+  g.setFont(&fonts::efontCN_16);
   g.setTextSize(1);
   g.setTextWrap(true);
   if (deviceState == "draft_preview") {
@@ -202,6 +226,15 @@ static void render() {
     g.print(lastError.substring(0, 100));
   }
   g.setTextWrap(false);
+  g.setFont(&fonts::Font0); // back to the default font for the ASCII hint/battery
+
+  // battery + estimated runtime
+  int blvl = M5.Power.getBatteryLevel();
+  uint16_t bcol =
+    (blvl >= 0 && blvl < 20) ? TFT_RED : (blvl >= 0 && blvl < 50) ? TFT_ORANGE : TFT_GREEN;
+  g.setTextColor(bcol, TFT_BLACK);
+  g.setCursor(3, 206);
+  g.print(batteryLine());
 
   // hint
   g.setTextColor(TFT_DARKGREY, TFT_BLACK);
@@ -228,7 +261,8 @@ static void startRecording() {
   d["channels"] = 1;
   d["format"] = "pcm16";
   txMessage(d);
-  M5.Mic.record(micbuf, MIC_CHUNK, 16000);
+  micIdx = 0;
+  M5.Mic.record(micbuf[0], MIC_CHUNK, 16000);
   deviceState = "recording";
   needRedraw = true;
 }
@@ -319,9 +353,11 @@ void loop() {
     ws.loop();
   }
 
-  if (recording && linked && !M5.Mic.isRecording()) {
-    txAudio(micbuf, MIC_CHUNK * sizeof(int16_t));
-    M5.Mic.record(micbuf, MIC_CHUNK, 16000);
+  if (recording && !M5.Mic.isRecording()) {
+    int done = micIdx;
+    micIdx ^= 1;
+    M5.Mic.record(micbuf[micIdx], MIC_CHUNK, 16000); // re-arm FIRST so the mic never pauses
+    if (linked) txAudio(micbuf[done], MIC_CHUNK * sizeof(int16_t));
   }
 
   if (deviceState == "draft_preview") {

@@ -22,9 +22,10 @@ function stripFillers(input: string): string {
 function detectTarget(text: string): { target: Target; commands: string[] } {
   if (/只复制|复制到剪贴板|copy(\s+only)?|剪贴板|clipboard/i.test(text))
     return { target: 'clipboard', commands: ['clipboard'] };
-  if (/发给\s*codex|给\s*codex|用\s*codex|\bcodex\b/i.test(text))
+  // include common STT mishears: codex~codecs/cortex, claude~cloud/clode
+  if (/发给\s*(codex|codecs|cortex)|给\s*(codex|codecs)|用\s*codex|\bcodex\b/i.test(text))
     return { target: 'codex', commands: ['codex'] };
-  if (/发给\s*claude|给\s*claude|用\s*claude|\bclaude\b/i.test(text))
+  if (/发给\s*(claude|cloud|clode)|给\s*(claude|cloud)|用\s*claude|\bclaude\b/i.test(text))
     return { target: 'claude', commands: ['claude'] };
   if (/终端|命令行|terminal/i.test(text)) return { target: 'terminal', commands: ['terminal'] };
   return { target: 'auto', commands: [] };
