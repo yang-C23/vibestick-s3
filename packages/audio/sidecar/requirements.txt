@@ -1,0 +1,5 @@
+# FunASR SenseVoiceSmall (default). Heavy first-run download (~1GB incl. torch).
+funasr>=1.1.0
+torch>=2.1
+torchaudio>=2.1
+# For Qwen3-ASR via MLX instead, see README.md (mlx-qwen3-asr) — no torch needed.

@@ -29,6 +29,12 @@ importers:
 
   apps/bridge:
     dependencies:
+      '@vibestick/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
+      '@vibestick/prompt-normalizer':
+        specifier: workspace:*
+        version: link:../../packages/prompt-normalizer
       '@vibestick/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -89,6 +95,17 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
+
+  packages/audio: {}
+
+  packages/prompt-normalizer:
+    dependencies:
+      '@vibestick/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
 
   packages/protocol:
     devDependencies:

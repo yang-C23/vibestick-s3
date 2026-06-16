@@ -15,6 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vibestick/audio": "workspace:*",
+    "@vibestick/prompt-normalizer": "workspace:*",
     "@vibestick/protocol": "workspace:*",
     "@vibestick/status-store": "workspace:*",
     "bonjour-service": "^1.2.1",
