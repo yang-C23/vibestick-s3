@@ -1,7 +1,14 @@
 import { deterministicNormalize } from './deterministic';
 import { ollamaNormalize } from './ollama';
 import { claudeNormalize } from './claude';
-import type { Normalizer, NormalizeContext, NormalizerConfig } from './types';
+import type { Normalizer, NormalizeContext, NormalizerConfig, NormalizerResult } from './types';
+
+/** Hybrid: if the LLM left the target ambiguous, fill it from rule-based routing. */
+function enrichTarget(r: NormalizerResult, transcript: string): NormalizerResult {
+  if (r.target !== 'auto') return r;
+  const d = deterministicNormalize(transcript);
+  return d.target !== 'auto' ? { ...r, target: d.target } : r;
+}
 
 export * from './types';
 export { deterministicNormalize } from './deterministic';
@@ -12,7 +19,11 @@ export function loadNormalizerConfig(cfg: Partial<NormalizerConfig> = {}): Norma
   return {
     backend: cfg.backend ?? process.env.VIBESTICK_NORMALIZER_BACKEND ?? 'deterministic',
     ollamaUrl: cfg.ollamaUrl ?? process.env.VIBESTICK_OLLAMA_URL ?? 'http://127.0.0.1:11434',
-    ollamaModel: cfg.ollamaModel ?? process.env.VIBESTICK_OLLAMA_MODEL ?? 'qwen2.5:3b-instruct',
+    ollamaModel:
+      cfg.ollamaModel ??
+      process.env.VIBESTICK_NORMALIZER_MODEL ??
+      process.env.VIBESTICK_OLLAMA_MODEL ??
+      'qwen3:4b',
     claudeModel: cfg.claudeModel ?? process.env.VIBESTICK_CLAUDE_MODEL ?? 'claude-haiku-4-5',
   };
 }
@@ -28,8 +39,10 @@ export function createNormalizer(partial: Partial<NormalizerConfig> = {}): Norma
     name: cfg.backend,
     async normalize(transcript: string, ctx: NormalizeContext = {}) {
       try {
-        if (cfg.backend === 'ollama') return await ollamaNormalize(transcript, ctx, cfg);
-        if (cfg.backend === 'claude') return await claudeNormalize(transcript, ctx, cfg);
+        if (cfg.backend === 'ollama')
+          return enrichTarget(await ollamaNormalize(transcript, ctx, cfg), transcript);
+        if (cfg.backend === 'claude')
+          return enrichTarget(await claudeNormalize(transcript, ctx, cfg), transcript);
       } catch (e) {
         console.warn(
           `normalizer "${cfg.backend}" failed; deterministic fallback:`,
