@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vibestick.dev/schema/normalizer-result.json",
+  "title": "NormalizerResult",
+  "description": "Strict structured output of the voice prompt normalizer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target",
+    "action",
+    "clean_prompt",
+    "short_preview",
+    "detected_intent",
+    "risk_level",
+    "needs_clarification",
+    "clarification_question",
+    "should_auto_send",
+    "spoken_commands"
+  ],
+  "properties": {
+    "target": { "enum": ["auto", "claude", "codex", "clipboard", "terminal"] },
+    "action": {
+      "enum": ["send", "copy_only", "save_draft", "status_query", "resume_last", "cancel"]
+    },
+    "clean_prompt": { "type": "string" },
+    "short_preview": { "type": "string", "maxLength": 280 },
+    "detected_intent": {
+      "enum": [
+        "implement",
+        "debug",
+        "refactor",
+        "review",
+        "explain",
+        "test",
+        "shell",
+        "status",
+        "other"
+      ]
+    },
+    "risk_level": { "enum": ["low", "medium", "high"] },
+    "needs_clarification": { "type": "boolean" },
+    "clarification_question": { "type": ["string", "null"] },
+    "should_auto_send": { "type": "boolean" },
+    "spoken_commands": { "type": "array", "items": { "type": "string" } }
+  }
+}

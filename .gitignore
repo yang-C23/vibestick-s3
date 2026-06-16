@@ -1,0 +1,32 @@
+# deps / build
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# env & secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# firmware build
+.pio/
+firmware/**/.pio/
+
+# local data: recordings, models, logs, paired devices
+*.wav
+*.pcm
+recordings/
+models/
+*.log
+.vibestick/
+data/
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/

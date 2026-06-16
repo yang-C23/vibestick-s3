@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+.pio
+pnpm-lock.yaml
+*.md
+firmware/**/*.cpp
+firmware/**/*.h
+firmware/**/*.ino

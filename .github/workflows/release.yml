@@ -1,0 +1,28 @@
+name: release
+
+# M7 will flesh this out: build + attach firmware .bin artifacts, publish the
+# ESP Web Tools flasher to GitHub Pages, and publish the bridge to npm.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  firmware-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -U platformio
+      - name: Build firmware
+        working-directory: firmware/sticks3
+        run: pio run -e sticks3
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sticks3-firmware
+          path: firmware/sticks3/.pio/build/sticks3/firmware.bin
+          if-no-files-found: warn
+  # TODO(M7): npm publish job + ESP Web Tools flasher to GitHub Pages.

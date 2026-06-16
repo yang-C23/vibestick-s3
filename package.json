@@ -1,0 +1,29 @@
+{
+  "name": "vibestick-s3",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A hardware companion (M5Stack StickS3) for vibe coding with Codex CLI and Claude Code: hands-free voice dictation + at-a-glance agent status.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "schema:validate": "tsx scripts/validate-schemas.ts",
+    "sim": "pnpm --filter @vibestick/mock-bridge dev & pnpm --filter @vibestick/device-simulator dev"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "ajv": "^8.17.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

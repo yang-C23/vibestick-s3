@@ -1,0 +1,250 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vibestick.dev/schema/wire-messages.json",
+  "title": "VibestickWireMessages",
+  "oneOf": [{ "$ref": "#/definitions/DeviceToBridge" }, { "$ref": "#/definitions/BridgeToDevice" }],
+  "definitions": {
+    "DeviceState": {
+      "enum": [
+        "idle",
+        "pairing",
+        "connected",
+        "recording",
+        "streaming",
+        "transcribing",
+        "draft_preview",
+        "sending",
+        "agent_running",
+        "done",
+        "error"
+      ]
+    },
+    "Button": { "enum": ["primary", "secondary", "power"] },
+    "ButtonGesture": {
+      "enum": ["click", "double_click", "long_press_start", "long_press_end"]
+    },
+    "ImuGesture": {
+      "enum": ["shake", "raise", "tilt_left", "tilt_right", "face_down", "face_up"]
+    },
+    "Target": { "enum": ["auto", "claude", "codex", "clipboard", "terminal"] },
+    "DraftAction": {
+      "enum": ["send", "copy_only", "save_draft", "append", "restore_last", "cancel", "retry"]
+    },
+    "RiskLevel": { "enum": ["low", "medium", "high"] },
+    "VibeTask": {
+      "type": "object",
+      "required": ["id", "agent", "status", "phase", "title", "lastEventAt", "startedAt", "source"],
+      "properties": {
+        "id": { "type": "string" },
+        "agent": { "enum": ["codex", "claude", "terminal", "unknown"] },
+        "projectName": { "type": "string" },
+        "cwd": { "type": "string" },
+        "status": {
+          "enum": [
+            "idle",
+            "queued",
+            "running",
+            "needs_user_input",
+            "needs_approval",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "phase": {
+          "enum": [
+            "planning",
+            "reading",
+            "editing",
+            "running_command",
+            "running_tests",
+            "reviewing_diff",
+            "waiting",
+            "summarizing",
+            "unknown"
+          ]
+        },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "lastEventAt": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "riskLevel": { "$ref": "#/definitions/RiskLevel" },
+        "requiresMacAttention": { "type": "boolean" },
+        "lastOutputPreview": { "type": "string" },
+        "source": { "enum": ["wrapper", "hook", "sdk", "manual"] }
+      }
+    },
+    "DeviceConfig": {
+      "type": "object",
+      "required": ["recordMaxMs", "autoPaste", "mascotPack"],
+      "properties": {
+        "recordMaxMs": { "type": "number" },
+        "autoPaste": { "type": "boolean" },
+        "mascotPack": { "type": "string" }
+      }
+    },
+    "Hello": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocolVersion", "deviceId", "firmware"],
+      "properties": {
+        "type": { "const": "hello" },
+        "protocolVersion": { "type": "integer" },
+        "deviceId": { "type": "string" },
+        "firmware": { "type": "string" },
+        "token": { "type": "string" }
+      }
+    },
+    "Heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ts"],
+      "properties": { "type": { "const": "heartbeat" }, "ts": { "type": "number" } }
+    },
+    "ButtonEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "button", "gesture", "ts"],
+      "properties": {
+        "type": { "const": "button.event" },
+        "button": { "$ref": "#/definitions/Button" },
+        "gesture": { "$ref": "#/definitions/ButtonGesture" },
+        "ts": { "type": "number" }
+      }
+    },
+    "ImuEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "gesture", "ts"],
+      "properties": {
+        "type": { "const": "imu.event" },
+        "gesture": { "$ref": "#/definitions/ImuGesture" },
+        "ts": { "type": "number" }
+      }
+    },
+    "AudioStart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sessionId", "sampleRate", "channels", "format"],
+      "properties": {
+        "type": { "const": "audio.start" },
+        "sessionId": { "type": "string" },
+        "sampleRate": { "type": "number" },
+        "channels": { "type": "number" },
+        "format": { "const": "pcm16" }
+      }
+    },
+    "AudioStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sessionId", "durationMs"],
+      "properties": {
+        "type": { "const": "audio.stop" },
+        "sessionId": { "type": "string" },
+        "durationMs": { "type": "number" }
+      }
+    },
+    "DraftActionMsg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "draftId", "action"],
+      "properties": {
+        "type": { "const": "draft.action" },
+        "draftId": { "type": "string" },
+        "action": { "$ref": "#/definitions/DraftAction" }
+      }
+    },
+    "Welcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocolVersion", "deviceId", "config"],
+      "properties": {
+        "type": { "const": "welcome" },
+        "protocolVersion": { "type": "integer" },
+        "deviceId": { "type": "string" },
+        "config": { "$ref": "#/definitions/DeviceConfig" }
+      }
+    },
+    "StateUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "state"],
+      "properties": {
+        "type": { "const": "state.update" },
+        "state": { "$ref": "#/definitions/DeviceState" },
+        "task": { "oneOf": [{ "$ref": "#/definitions/VibeTask" }, { "type": "null" }] }
+      }
+    },
+    "DraftPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "draftId", "target", "shortPreview", "riskLevel", "needsClarification"],
+      "properties": {
+        "type": { "const": "draft.preview" },
+        "draftId": { "type": "string" },
+        "target": { "$ref": "#/definitions/Target" },
+        "shortPreview": { "type": "string" },
+        "riskLevel": { "$ref": "#/definitions/RiskLevel" },
+        "needsClarification": { "type": "boolean" },
+        "clarificationQuestion": { "type": ["string", "null"] }
+      }
+    },
+    "TaskUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "task"],
+      "properties": {
+        "type": { "const": "task.update" },
+        "task": { "$ref": "#/definitions/VibeTask" }
+      }
+    },
+    "ConfigMsg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "config"],
+      "properties": {
+        "type": { "const": "config" },
+        "config": { "$ref": "#/definitions/DeviceConfig" }
+      }
+    },
+    "ErrorMsg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "message"],
+      "properties": {
+        "type": { "const": "error" },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "Pong": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ts"],
+      "properties": { "type": { "const": "pong" }, "ts": { "type": "number" } }
+    },
+    "DeviceToBridge": {
+      "oneOf": [
+        { "$ref": "#/definitions/Hello" },
+        { "$ref": "#/definitions/Heartbeat" },
+        { "$ref": "#/definitions/ButtonEvent" },
+        { "$ref": "#/definitions/ImuEvent" },
+        { "$ref": "#/definitions/AudioStart" },
+        { "$ref": "#/definitions/AudioStop" },
+        { "$ref": "#/definitions/DraftActionMsg" }
+      ]
+    },
+    "BridgeToDevice": {
+      "oneOf": [
+        { "$ref": "#/definitions/Welcome" },
+        { "$ref": "#/definitions/StateUpdate" },
+        { "$ref": "#/definitions/DraftPreview" },
+        { "$ref": "#/definitions/TaskUpdate" },
+        { "$ref": "#/definitions/ConfigMsg" },
+        { "$ref": "#/definitions/ErrorMsg" },
+        { "$ref": "#/definitions/Pong" }
+      ]
+    }
+  }
+}
