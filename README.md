@@ -49,6 +49,22 @@ pnpm --filter @vibestick/mock-agent dev
 pnpm --filter @vibestick/device-simulator dev -- --script
 ```
 
+## Run the bridge daemon (M1)
+
+```sh
+# start the real daemon: device WS :47600, control HTTP :47601, mDNS _vibestick._tcp.local
+pnpm --filter vibestickd dev
+
+# control it from another terminal (run the bin directly so flags parse):
+node_modules/.bin/tsx apps/cli/src/index.ts ping
+node_modules/.bin/tsx apps/cli/src/index.ts send-test --agent codex --status needs_approval --phase waiting --title "git push"
+node_modules/.bin/tsx apps/cli/src/index.ts status
+node_modules/.bin/tsx apps/cli/src/index.ts pair    # 6-digit pairing code
+```
+
+The `device-simulator` connects to this daemon the same way it connects to the mock bridge. After
+packaging (M7) these become the `vibestickd` and `vibestick` binaries.
+
 ## Develop
 
 ```sh

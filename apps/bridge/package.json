@@ -1,0 +1,26 @@
+{
+  "name": "vibestickd",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/bridge.ts",
+  "exports": {
+    ".": "./src/bridge.ts"
+  },
+  "bin": {
+    "vibestickd": "src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibestick/protocol": "workspace:*",
+    "@vibestick/status-store": "workspace:*",
+    "bonjour-service": "^1.2.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
+  }
+}
