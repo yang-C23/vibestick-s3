@@ -145,6 +145,15 @@
         "durationMs": { "type": "number" }
       }
     },
+    "AudioChunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "data"],
+      "properties": {
+        "type": { "const": "audio.chunk" },
+        "data": { "type": "string" }
+      }
+    },
     "DraftActionMsg": {
       "type": "object",
       "additionalProperties": false,
@@ -231,6 +240,7 @@
         { "$ref": "#/definitions/ButtonEvent" },
         { "$ref": "#/definitions/ImuEvent" },
         { "$ref": "#/definitions/AudioStart" },
+        { "$ref": "#/definitions/AudioChunk" },
         { "$ref": "#/definitions/AudioStop" },
         { "$ref": "#/definitions/DraftActionMsg" }
       ]

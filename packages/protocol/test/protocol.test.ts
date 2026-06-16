@@ -36,6 +36,7 @@ describe('device -> bridge messages match the schema', () => {
     { type: 'button.event', button: 'primary', gesture: 'long_press_start', ts: 2 },
     { type: 'imu.event', gesture: 'shake', ts: 3 },
     { type: 'audio.start', sessionId: 'aud_1', sampleRate: 16000, channels: 1, format: 'pcm16' },
+    { type: 'audio.chunk', data: 'AAAA' },
     { type: 'audio.stop', sessionId: 'aud_1', durationMs: 4200 },
     { type: 'draft.action', draftId: 'draft_1', action: 'send' },
   ];

@@ -21,7 +21,9 @@
     "@vibestick/prompt-normalizer": "workspace:*",
     "@vibestick/protocol": "workspace:*",
     "@vibestick/status-store": "workspace:*",
+    "@serialport/parser-readline": "^12.0.0",
     "bonjour-service": "^1.2.1",
+    "serialport": "^12.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

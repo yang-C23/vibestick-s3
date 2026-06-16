@@ -98,6 +98,11 @@ export interface AudioStopMsg {
   sessionId: string;
   durationMs: number;
 }
+/** Base64-encoded PCM16 chunk — used by the serial transport (WiFi uses binary frames). */
+export interface AudioChunkMsg {
+  type: 'audio.chunk';
+  data: string;
+}
 export interface DraftActionMsg {
   type: 'draft.action';
   draftId: string;
@@ -110,6 +115,7 @@ export type DeviceToBridge =
   | ButtonEventMsg
   | ImuEventMsg
   | AudioStartMsg
+  | AudioChunkMsg
   | AudioStopMsg
   | DraftActionMsg;
 

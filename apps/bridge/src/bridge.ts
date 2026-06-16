@@ -13,17 +13,24 @@ import {
 } from '@vibestick/protocol';
 import { StatusStore, deviceStateForTask, type Draft } from '@vibestick/status-store';
 import { AudioAccumulator } from '@vibestick/audio';
+import { copyToClipboard } from '@vibestick/integration-clipboard';
+import { injectToFrontmost, type InjectResult } from '@vibestick/integration-terminal';
 import { loadConfig, type BridgeConfig } from './config';
 import { PairingStore } from './pairing';
 import { advertise, type MdnsHandle } from './mdns';
 import { createPipeline, PipelineError } from './pipeline';
-import { copyToClipboard } from '@vibestick/integration-clipboard';
-import { injectToFrontmost, type InjectResult } from '@vibestick/integration-terminal';
+import { startSerialTransport, type SerialHandle } from './serial';
 
 export interface Bridge {
   config: BridgeConfig;
   store: StatusStore;
   close(): Promise<void>;
+}
+
+/** Transport-agnostic device connection (WebSocket or USB serial). */
+export interface Conn {
+  id: string;
+  send(m: BridgeToDevice): void;
 }
 
 const DEVICE_CONFIG: DeviceConfig = { recordMaxMs: 60000, autoPaste: false, mascotPack: 'default' };
@@ -34,7 +41,6 @@ function targetToAgent(t: Target): AgentKind {
   if (t === 'terminal') return 'terminal';
   return 'unknown';
 }
-
 function toBuffer(data: RawData): Buffer {
   if (Buffer.isBuffer(data)) return data;
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -47,20 +53,17 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
   const pairing = new PairingStore(config.stateDir);
   const pipeline = createPipeline();
 
-  const clients = new Set<WebSocket>();
-  const sessionTarget = new Map<WebSocket, number>();
-  const sessionAudio = new Map<WebSocket, AudioAccumulator>();
+  const conns = new Set<Conn>();
+  const sockets = new Set<WebSocket>();
+  const sessionTarget = new Map<string, number>();
+  const sessionAudio = new Map<string, AudioAccumulator>();
 
-  const send = (ws: WebSocket, m: BridgeToDevice): void => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
-  };
   const broadcast = (m: BridgeToDevice): void => {
-    const s = JSON.stringify(m);
-    for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(s);
+    for (const c of conns) c.send(m);
   };
-  const currentTarget = (ws: WebSocket): Target => TARGETS[sessionTarget.get(ws) ?? 0] ?? 'auto';
-  const sendDraft = (ws: WebSocket, d: Draft): void => {
-    send(ws, {
+  const currentTarget = (conn: Conn): Target => TARGETS[sessionTarget.get(conn.id) ?? 0] ?? 'auto';
+  const sendDraft = (conn: Conn, d: Draft): void => {
+    conn.send({
       type: 'draft.preview',
       draftId: d.draftId,
       target: d.target,
@@ -69,23 +72,7 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
       needsClarification: d.needsClarification,
       clarificationQuestion: d.clarificationQuestion,
     });
-    send(ws, { type: 'state.update', state: 'draft_preview' });
-  };
-  const runPipeline = async (ws: WebSocket, pcm: Buffer | null): Promise<void> => {
-    send(ws, { type: 'state.update', state: 'transcribing' });
-    try {
-      const draft = await pipeline.process(pcm, currentTarget(ws));
-      store.addDraft(draft);
-      sendDraft(ws, draft);
-    } catch (e) {
-      const code = e instanceof PipelineError ? e.code : 'PIPELINE_ERROR';
-      send(ws, { type: 'error', code, message: (e as Error).message });
-      send(ws, {
-        type: 'state.update',
-        state: deviceStateForTask(store.currentTask),
-        task: store.currentTask,
-      });
-    }
+    conn.send({ type: 'state.update', state: 'draft_preview' });
   };
 
   const autoPaste = process.env.VIBESTICK_INJECT_AUTOPASTE === 'true';
@@ -95,42 +82,55 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
       await copyToClipboard(text);
       return { ok: true, method: 'clipboard', message: 'copied to clipboard' };
     }
-    // claude / codex / terminal / auto -> paste into the focused terminal (never Enter)
     return injectToFrontmost(text, { autoPaste });
   };
 
-  // Push every task change to all connected devices.
+  const runPipeline = async (conn: Conn, pcm: Buffer | null): Promise<void> => {
+    conn.send({ type: 'state.update', state: 'transcribing' });
+    try {
+      const draft = await pipeline.process(pcm, currentTarget(conn));
+      store.addDraft(draft);
+      sendDraft(conn, draft);
+    } catch (e) {
+      const code = e instanceof PipelineError ? e.code : 'PIPELINE_ERROR';
+      conn.send({ type: 'error', code, message: (e as Error).message });
+      conn.send({
+        type: 'state.update',
+        state: deviceStateForTask(store.currentTask),
+        task: store.currentTask,
+      });
+    }
+  };
+
   store.on('change', (task: VibeTask) => {
     broadcast({ type: 'task.update', task });
     broadcast({ type: 'state.update', state: deviceStateForTask(task), task });
   });
 
-  async function handle(ws: WebSocket, msg: DeviceToBridge): Promise<void> {
+  async function handle(conn: Conn, msg: DeviceToBridge): Promise<void> {
     switch (msg.type) {
       case 'hello': {
         const neg = negotiateVersion(msg.protocolVersion);
         if (!neg.ok) {
-          send(ws, {
+          conn.send({
             type: 'error',
             code: 'PROTOCOL_VERSION',
             message: neg.reason ?? 'unsupported',
           });
-          ws.close();
           return;
         }
         if (config.requireToken && !pairing.verify(msg.deviceId, msg.token)) {
-          send(ws, { type: 'error', code: 'PAIRING', message: 'unpaired — run `vibestick pair`' });
-          ws.close();
+          conn.send({ type: 'error', code: 'PAIRING', message: 'unpaired — run `vibestick pair`' });
           return;
         }
         pairing.markPaired(msg.deviceId);
-        send(ws, {
+        conn.send({
           type: 'welcome',
           protocolVersion: PROTOCOL_VERSION,
           deviceId: msg.deviceId,
           config: DEVICE_CONFIG,
         });
-        send(ws, {
+        conn.send({
           type: 'state.update',
           state: deviceStateForTask(store.currentTask),
           task: store.currentTask,
@@ -138,35 +138,40 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
         break;
       }
       case 'heartbeat':
-        send(ws, { type: 'pong', ts: msg.ts });
+        conn.send({ type: 'pong', ts: msg.ts });
         break;
       case 'button.event':
         if (msg.button === 'primary' && msg.gesture === 'long_press_start') {
-          send(ws, { type: 'state.update', state: 'recording' });
+          conn.send({ type: 'state.update', state: 'recording' });
         } else if (msg.button === 'secondary' && msg.gesture === 'click') {
-          sessionTarget.set(ws, ((sessionTarget.get(ws) ?? 0) + 1) % TARGETS.length);
-          send(ws, { type: 'state.update', state: 'idle' });
+          sessionTarget.set(conn.id, ((sessionTarget.get(conn.id) ?? 0) + 1) % TARGETS.length);
+          conn.send({ type: 'state.update', state: 'idle' });
         }
         break;
       case 'audio.start':
-        sessionAudio.set(ws, new AudioAccumulator());
-        send(ws, { type: 'state.update', state: 'streaming' });
+        sessionAudio.set(conn.id, new AudioAccumulator());
+        conn.send({ type: 'state.update', state: 'streaming' });
         break;
+      case 'audio.chunk': {
+        // serial transport delivers PCM as base64 (WiFi uses binary frames)
+        sessionAudio.get(conn.id)?.append(Buffer.from(msg.data, 'base64'));
+        break;
+      }
       case 'audio.stop': {
-        const pcm = sessionAudio.get(ws)?.pcm() ?? null;
-        sessionAudio.delete(ws);
-        await runPipeline(ws, pcm);
+        const pcm = sessionAudio.get(conn.id)?.pcm() ?? null;
+        sessionAudio.delete(conn.id);
+        await runPipeline(conn, pcm);
         break;
       }
       case 'draft.action': {
         if (msg.action === 'send') {
-          send(ws, { type: 'state.update', state: 'sending' });
+          conn.send({ type: 'state.update', state: 'sending' });
           const draft = store.recallDraft(1);
-          const target = draft?.target ?? currentTarget(ws);
+          const target = draft?.target ?? currentTarget(conn);
           try {
             await injectForTarget(target, draft?.cleanPrompt ?? '');
           } catch (e) {
-            send(ws, { type: 'error', code: 'INJECT_FAILED', message: (e as Error).message });
+            conn.send({ type: 'error', code: 'INJECT_FAILED', message: (e as Error).message });
           }
           store.applyEvent({
             agent: targetToAgent(target),
@@ -176,12 +181,12 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
             source: 'manual',
           });
         } else if (msg.action === 'retry') {
-          await runPipeline(ws, null);
+          await runPipeline(conn, null);
         } else if (msg.action === 'restore_last') {
           const d = store.recallDraft(1);
-          if (d) sendDraft(ws, d);
+          if (d) sendDraft(conn, d);
         } else if (msg.action === 'cancel') {
-          send(ws, {
+          conn.send({
             type: 'state.update',
             state: deviceStateForTask(store.currentTask),
             task: store.currentTask,
@@ -194,27 +199,52 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
     }
   }
 
+  // --- WebSocket transport ---
+  let wsSeq = 0;
   const wss = new WebSocketServer({ host: config.host, port: config.wsPort });
   wss.on('connection', (ws) => {
-    clients.add(ws);
+    const conn: Conn = {
+      id: `ws_${++wsSeq}`,
+      send: (m) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
+      },
+    };
+    conns.add(conn);
+    sockets.add(ws);
     ws.on('message', (data: RawData, isBinary: boolean) => {
       if (isBinary) {
-        sessionAudio.get(ws)?.append(toBuffer(data));
+        sessionAudio.get(conn.id)?.append(toBuffer(data));
         return;
       }
       try {
-        void handle(ws, JSON.parse(data.toString()) as DeviceToBridge);
+        void handle(conn, JSON.parse(data.toString()) as DeviceToBridge);
       } catch {
         /* ignore malformed frames */
       }
     });
     ws.on('close', () => {
-      clients.delete(ws);
-      sessionTarget.delete(ws);
-      sessionAudio.delete(ws);
+      conns.delete(conn);
+      sockets.delete(ws);
+      sessionTarget.delete(conn.id);
+      sessionAudio.delete(conn.id);
     });
   });
 
+  // --- USB serial transport ---
+  let serial: SerialHandle | null = null;
+  if (config.serialPort) {
+    serial = startSerialTransport(config.serialPort, {
+      onConn: (conn) => conns.add(conn),
+      onMessage: (conn, msg) => void handle(conn, msg),
+      onClose: (conn) => {
+        conns.delete(conn);
+        sessionTarget.delete(conn.id);
+        sessionAudio.delete(conn.id);
+      },
+    });
+  }
+
+  // --- HTTP control ---
   const json = (res: ServerResponse, code: number, body: unknown): void => {
     res.writeHead(code, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
@@ -222,14 +252,14 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
   const http = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? '';
     if (req.method === 'GET' && url === '/health') {
-      return json(res, 200, { ok: true, protocolVersion: PROTOCOL_VERSION, clients: clients.size });
+      return json(res, 200, { ok: true, protocolVersion: PROTOCOL_VERSION, clients: conns.size });
     }
     if (req.method === 'GET' && url === '/status') {
       return json(res, 200, {
         currentTask: store.currentTask,
         tasks: store.list(),
         devices: pairing.pairedDeviceIds,
-        clients: clients.size,
+        clients: conns.size,
       });
     }
     if (req.method === 'POST' && url === '/event') {
@@ -272,8 +302,9 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
 
   console.log(`vibestickd: device WS   ws://${config.host}:${config.wsPort}`);
   console.log(
-    `vibestickd: control HTTP http://${config.host}:${config.httpPort} (/health /status /event /pair)`,
+    `vibestickd: control HTTP http://${config.host}:${config.httpPort} (/health /status /event /pair /inject)`,
   );
+  if (config.serialPort) console.log(`vibestickd: serial      ${config.serialPort}`);
   console.log(
     `vibestickd: pairing code ${pairing.code}${config.requireToken ? ' (required)' : ' (token not required in dev)'}`,
   );
@@ -283,7 +314,8 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
     store,
     async close() {
       mdns?.stop();
-      for (const c of clients) c.terminate();
+      serial?.close();
+      for (const s of sockets) s.terminate();
       await new Promise<void>((r) => wss.close(() => r()));
       await new Promise<void>((r) => http.close(() => r()));
     },
