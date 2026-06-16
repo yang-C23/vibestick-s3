@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +14,22 @@ export interface BridgeConfig {
   mdns: boolean;
   /** Where pairing/token state is persisted (gitignored). */
   stateDir: string;
+  /** USB serial device path ('' disables). Auto-detected from /dev/cu.usbmodem*. */
+  serialPort: string;
+}
+
+function detectSerialPort(): string {
+  const env = process.env.VIBESTICK_SERIAL_PORT;
+  if (env !== undefined) return env; // explicit (including '' to disable)
+  try {
+    const matches = readdirSync('/dev')
+      .filter((f) => f.startsWith('cu.usbmodem'))
+      .sort();
+    const first = matches[0];
+    return first ? `/dev/${first}` : '';
+  } catch {
+    return '';
+  }
 }
 
 export function loadConfig(overrides: Partial<BridgeConfig> = {}): BridgeConfig {
@@ -24,6 +41,7 @@ export function loadConfig(overrides: Partial<BridgeConfig> = {}): BridgeConfig 
     requireToken: process.env.VIBESTICK_REQUIRE_TOKEN === 'true',
     mdns: process.env.VIBESTICK_MDNS !== 'false',
     stateDir: process.env.VIBESTICK_STATE_DIR ?? join(homedir(), '.vibestick'),
+    serialPort: detectSerialPort(),
     ...overrides,
   };
 }

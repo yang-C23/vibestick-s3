@@ -1,16 +1,22 @@
-# StickS3 hardware-verification checklist
+# StickS3 hardware verification — CONFIRMED on device (2026-06)
 
-Do **not** trust the button/pin map until these are confirmed on a real device. Documented values
-(from M5Stack docs) are the starting point; verify them with the test sketches.
+Verified on a real M5Stack StickS3 (ESP32-S3-PICO-1, MAC 70:04:1d:db…) with `button_test`.
 
-| Item | Documented (verify!) | How to confirm |
-| --- | --- | --- |
-| MCU | ESP32-S3-PICO-1-N8R8 (8 MB flash, 8 MB PSRAM) | boot log / `pio device monitor` |
-| User buttons | KEY1 = GPIO11, KEY2 = GPIO12 (M5.BtnA / M5.BtnB) | `pio run -e button_test -t upload`; press each, watch serial |
-| Power button | M5PM1 PMIC: single=on/reset, double=off, long=download | physical test; M5.BtnPWR events |
-| IMU | BMI270 @ I2C 0x68 | button_test prints accel; tilt/shake/raise should change values |
-| Mic | MEMS + ES8311 codec | `pio run -e audio_test -t upload`; speak, watch RMS rise |
-| Display | 1.14" 135×240, ST7789P3 | drawn by both sketches |
-| Battery / charge | 250 mAh via M5PM1 | `M5.Power.getBatteryLevel()` once M5Unified support confirmed |
+| Item | Confirmed value |
+| --- | --- |
+| MCU | ESP32-S3-PICO-1 rev v0.2 — WiFi+BLE, **8 MB flash (GD)**, **8 MB QUAD PSRAM (AP_3v3)** |
+| PlatformIO PSRAM mode | `board_build.arduino.memory_type = qio_qspi` (octal/`qio_opi` boot-loops!) |
+| **M5.BtnA (KEY1)** | **front blue long-bar button on the screen face** → primary / "record" |
+| **M5.BtnB (KEY2)** | **right-side rectangular button** → secondary |
+| M5.BtnPWR | side power button: single-press = reset/power-on · long-press = download mode |
+| IMU | BMI270 — ax/ay/az respond to rotation ✓ |
+| Display | 1.14″ ST7789P3 — auto-detected by M5Unified/M5GFX (StickS3 in their board tables) ✓ |
+| M5Unified / M5GFX | 0.2.17 / 0.2.22 (both know the StickS3) |
 
-Record confirmed values back into `src/` and this file, then proceed to M2.
+## Flashing workflow (native USB quirk)
+
+esptool's auto-reset leaves these boards in the ROM bootloader, so:
+
+1. **Enter download mode:** long-press the power button (~6 s) until the screen is blank (green LED blinks).
+2. `pio run -e <env> -t upload --upload-port /dev/cu.usbmodem101`
+3. **Boot the app:** single-press the power button (or replug USB) — esptool's RTS reset won't launch it.
