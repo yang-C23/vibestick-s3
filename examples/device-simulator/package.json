@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vibestick/mascots": "workspace:*",
     "@vibestick/protocol": "workspace:*",
     "ws": "^8.18.0"
   },

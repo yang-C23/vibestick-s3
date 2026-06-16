@@ -62,6 +62,7 @@ node_modules/.bin/tsx apps/cli/src/index.ts status
 node_modules/.bin/tsx apps/cli/src/index.ts pair    # 6-digit pairing code
 node_modules/.bin/tsx apps/cli/src/index.ts send "fix the bug in auth.ts" --target clipboard
 node_modules/.bin/tsx apps/cli/src/index.ts watch -- codex exec "add a README"   # streams status to the device
+node_modules/.bin/tsx apps/cli/src/index.ts install-hooks         # wire Claude Code + Codex status hooks (uninstall-hooks to remove)
 ```
 
 `send` injects via the clipboard (auto-paste into the focused terminal is opt-in and **never**

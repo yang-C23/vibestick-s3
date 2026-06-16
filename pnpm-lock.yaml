@@ -78,6 +78,9 @@ importers:
 
   examples/device-simulator:
     dependencies:
+      '@vibestick/mascots':
+        specifier: workspace:*
+        version: link:../../packages/mascots
       '@vibestick/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -129,6 +132,8 @@ importers:
       '@vibestick/integration-clipboard':
         specifier: workspace:*
         version: link:../clipboard
+
+  packages/mascots: {}
 
   packages/prompt-normalizer:
     dependencies:
