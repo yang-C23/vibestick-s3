@@ -9,6 +9,7 @@ import {
   type TaskStatus,
   type VibeTask,
 } from '@vibestick/protocol';
+import type { ClaudeSettings } from '@vibestick/integration-claude';
 
 function httpBase(): string {
   const ws = Number(process.env.VIBESTICK_WS_PORT ?? 47600);
@@ -195,6 +196,98 @@ program
         () => process.exit(code ?? 0),
       );
     });
+  });
+
+program
+  .command('install-hooks')
+  .description('install Claude Code / Codex hooks that report status to the bridge')
+  .option('--claude', 'install Claude Code hooks')
+  .option('--codex', 'install Codex hooks')
+  .option('--dry-run', 'print what would change without writing')
+  .action(async (opts: { claude?: boolean; codex?: boolean; dryRun?: boolean }) => {
+    const fs = await import('node:fs');
+    const { homedir } = await import('node:os');
+    const { join, dirname } = await import('node:path');
+    const claudeMod = await import('@vibestick/integration-claude');
+    const codexMod = await import('@vibestick/integration-codex');
+
+    const both = !opts.claude && !opts.codex;
+    const hooksDir = process.env.VIBESTICK_HOOKS_DIR ?? join(homedir(), '.vibestick', 'hooks');
+    const writeExec = (p: string, content: string) => {
+      fs.mkdirSync(dirname(p), { recursive: true });
+      fs.writeFileSync(p, content);
+      fs.chmodSync(p, 0o755);
+    };
+
+    if (opts.claude || both) {
+      const script = join(hooksDir, 'claude-hook.sh');
+      const settingsPath =
+        process.env.VIBESTICK_CLAUDE_SETTINGS ?? join(homedir(), '.claude', 'settings.json');
+      const existing = fs.existsSync(settingsPath)
+        ? (JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as ClaudeSettings)
+        : {};
+      const merged = claudeMod.withVibestickHooks(existing, script);
+      if (opts.dryRun) {
+        console.log(`[dry-run] would write ${script}`);
+        console.log(`[dry-run] ${settingsPath} hooks ->\n${JSON.stringify(merged.hooks, null, 2)}`);
+      } else {
+        writeExec(script, claudeMod.claudeHookScript());
+        fs.mkdirSync(dirname(settingsPath), { recursive: true });
+        if (fs.existsSync(settingsPath)) fs.copyFileSync(settingsPath, settingsPath + '.bak');
+        fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n');
+        console.log(`✓ Claude Code hooks installed -> ${settingsPath} (backup at .bak)`);
+      }
+    }
+
+    if (opts.codex || both) {
+      const hookScript = join(hooksDir, 'codex-hook.sh');
+      const notify = join(hooksDir, 'codex-notify.sh');
+      const codexDir = process.env.VIBESTICK_CODEX_DIR ?? join(homedir(), '.codex');
+      const hooksJsonPath = join(codexDir, 'hooks.json');
+      const tomlLine = codexMod.codexConfigNotifyLine(notify);
+      if (opts.dryRun) {
+        console.log(`[dry-run] would write ${hookScript}, ${notify}, ${hooksJsonPath}`);
+        console.log(`[dry-run] add to ~/.codex/config.toml:\n  ${tomlLine}`);
+      } else {
+        writeExec(hookScript, codexMod.codexHookScript());
+        writeExec(notify, codexMod.codexNotifyScript());
+        fs.mkdirSync(codexDir, { recursive: true });
+        if (fs.existsSync(hooksJsonPath)) fs.copyFileSync(hooksJsonPath, hooksJsonPath + '.bak');
+        fs.writeFileSync(
+          hooksJsonPath,
+          JSON.stringify(codexMod.codexHooksJson(hookScript), null, 2) + '\n',
+        );
+        console.log(`✓ Codex hooks installed -> ${hooksJsonPath}`);
+        console.log(`  Add this line to ~/.codex/config.toml:\n    ${tomlLine}`);
+      }
+    }
+  });
+
+program
+  .command('uninstall-hooks')
+  .description('remove vibestick hooks from Claude Code / Codex')
+  .action(async () => {
+    const fs = await import('node:fs');
+    const { homedir } = await import('node:os');
+    const { join } = await import('node:path');
+    const claudeMod = await import('@vibestick/integration-claude');
+
+    const settingsPath =
+      process.env.VIBESTICK_CLAUDE_SETTINGS ?? join(homedir(), '.claude', 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const cleaned = claudeMod.withoutVibestickHooks(
+        JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as ClaudeSettings,
+      );
+      fs.copyFileSync(settingsPath, settingsPath + '.bak');
+      fs.writeFileSync(settingsPath, JSON.stringify(cleaned, null, 2) + '\n');
+      console.log(`✓ removed vibestick Claude hooks from ${settingsPath}`);
+    }
+    const codexDir = process.env.VIBESTICK_CODEX_DIR ?? join(homedir(), '.codex');
+    const hooksJsonPath = join(codexDir, 'hooks.json');
+    if (fs.existsSync(hooksJsonPath)) {
+      fs.rmSync(hooksJsonPath);
+      console.log(`✓ removed ${hooksJsonPath} (also remove the notify line from config.toml)`);
+    }
   });
 
 program.parseAsync().catch((e: unknown) => {

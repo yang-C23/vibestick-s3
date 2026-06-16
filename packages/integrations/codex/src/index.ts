@@ -1,5 +1,7 @@
 import type { AgentPhase } from '@vibestick/protocol';
 
+export * from './hooks';
+
 export const AGENT_KIND = 'codex' as const;
 
 /**

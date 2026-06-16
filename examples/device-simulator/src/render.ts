@@ -1,4 +1,5 @@
 import type { DeviceState, Target, VibeTask } from '@vibestick/protocol';
+import { mascotFor, mascotStateFor, type MascotAgent } from '@vibestick/mascots';
 
 export interface ViewModel {
   state: DeviceState;
@@ -14,24 +15,6 @@ export interface ViewModel {
   wifi: number;
   battery: number;
 }
-
-/**
- * Two-line "mascot" placeholders (original ASCII art — no official logos).
- * Real firmware swaps these for sprite frames per agent + state.
- */
-const PETS: Record<DeviceState, [string, string]> = {
-  idle: ['(-.-) zzZ', 'standby'],
-  pairing: ['(o.o)?', 'pairing'],
-  connected: ['(^.^)', 'ready'],
-  recording: ['(O.O)', 'listening )))'],
-  streaming: ['(O.O)', 'sending )))'],
-  transcribing: ['(o_o)', 'typing...'],
-  draft_preview: ['(^_^)', 'review'],
-  sending: ['(>_>)', 'sending >>'],
-  agent_running: ['(=_=)b', 'working'],
-  done: ['\\(^o^)/', 'done!'],
-  error: ['(x_x)', 'error'],
-};
 
 const WIDTH = 30;
 const pad = (s: string) => (s.length > WIDTH ? s.slice(0, WIDTH - 1) + '…' : s.padEnd(WIDTH));
@@ -62,15 +45,16 @@ function bottomHint(vm: ViewModel): string {
 }
 
 export function renderScreen(vm: ViewModel): string {
-  const [pet, mood] = PETS[vm.state];
+  const agent: MascotAgent = (vm.task?.agent as MascotAgent | undefined) ?? 'unknown';
+  const [face, mood] = mascotFor(agent, mascotStateFor(vm.state, vm.task?.status));
   const wifi = '▮'.repeat(vm.wifi) + '▯'.repeat(Math.max(0, 4 - vm.wifi));
   const out: string[] = [];
   out.push(`┌${'─'.repeat(WIDTH + 2)}┐`);
   out.push(line(`wifi ${wifi}  bat ${vm.battery}%  →${vm.target}`));
   out.push(rule());
   out.push(line(''));
-  out.push(line('        ' + pet));
-  out.push(line('        ' + mood));
+  out.push(line('       ' + face));
+  out.push(line('       ' + mood));
   if (vm.state === 'agent_running' && vm.task) {
     out.push(line(`${vm.task.agent}: ${vm.task.phase}`));
     out.push(line(vm.task.title));
