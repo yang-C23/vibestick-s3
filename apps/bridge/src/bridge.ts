@@ -17,6 +17,8 @@ import { loadConfig, type BridgeConfig } from './config';
 import { PairingStore } from './pairing';
 import { advertise, type MdnsHandle } from './mdns';
 import { createPipeline, PipelineError } from './pipeline';
+import { copyToClipboard } from '@vibestick/integration-clipboard';
+import { injectToFrontmost, type InjectResult } from '@vibestick/integration-terminal';
 
 export interface Bridge {
   config: BridgeConfig;
@@ -86,6 +88,17 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
     }
   };
 
+  const autoPaste = process.env.VIBESTICK_INJECT_AUTOPASTE === 'true';
+  const injectForTarget = async (target: Target, text: string): Promise<InjectResult> => {
+    if (!text) return { ok: false, method: 'clipboard', message: 'nothing to inject' };
+    if (target === 'clipboard') {
+      await copyToClipboard(text);
+      return { ok: true, method: 'clipboard', message: 'copied to clipboard' };
+    }
+    // claude / codex / terminal / auto -> paste into the focused terminal (never Enter)
+    return injectToFrontmost(text, { autoPaste });
+  };
+
   // Push every task change to all connected devices.
   store.on('change', (task: VibeTask) => {
     broadcast({ type: 'task.update', task });
@@ -149,9 +162,14 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
         if (msg.action === 'send') {
           send(ws, { type: 'state.update', state: 'sending' });
           const draft = store.recallDraft(1);
-          // M5 routes to a real adapter; M1 just records a task so the monitor lights up.
+          const target = draft?.target ?? currentTarget(ws);
+          try {
+            await injectForTarget(target, draft?.cleanPrompt ?? '');
+          } catch (e) {
+            send(ws, { type: 'error', code: 'INJECT_FAILED', message: (e as Error).message });
+          }
           store.applyEvent({
-            agent: targetToAgent(currentTarget(ws)),
+            agent: targetToAgent(target),
             status: 'running',
             phase: 'planning',
             title: draft?.shortPreview ?? 'Voice task',
@@ -223,6 +241,22 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
         } catch {
           json(res, 400, { error: 'bad json' });
         }
+      });
+      return;
+    }
+    if (req.method === 'POST' && url === '/inject') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        void (async () => {
+          try {
+            const { text, target } = JSON.parse(body) as { text: string; target?: Target };
+            const r = await injectForTarget(target ?? 'clipboard', text);
+            json(res, r.ok ? 200 : 400, r);
+          } catch (e) {
+            json(res, 400, { error: (e as Error).message });
+          }
+        })();
       });
       return;
     }

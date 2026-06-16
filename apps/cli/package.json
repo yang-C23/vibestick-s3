@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vibestick/integration-claude": "workspace:*",
+    "@vibestick/integration-codex": "workspace:*",
     "@vibestick/protocol": "workspace:*",
     "commander": "^12.1.0",
     "vibestickd": "workspace:*"

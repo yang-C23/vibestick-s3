@@ -32,6 +32,12 @@ importers:
       '@vibestick/audio':
         specifier: workspace:*
         version: link:../../packages/audio
+      '@vibestick/integration-clipboard':
+        specifier: workspace:*
+        version: link:../../packages/integrations/clipboard
+      '@vibestick/integration-terminal':
+        specifier: workspace:*
+        version: link:../../packages/integrations/terminal
       '@vibestick/prompt-normalizer':
         specifier: workspace:*
         version: link:../../packages/prompt-normalizer
@@ -54,6 +60,12 @@ importers:
 
   apps/cli:
     dependencies:
+      '@vibestick/integration-claude':
+        specifier: workspace:*
+        version: link:../../packages/integrations/claude
+      '@vibestick/integration-codex':
+        specifier: workspace:*
+        version: link:../../packages/integrations/codex
       '@vibestick/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -97,6 +109,26 @@ importers:
         version: 8.18.1
 
   packages/audio: {}
+
+  packages/integrations/claude:
+    dependencies:
+      '@vibestick/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  packages/integrations/clipboard: {}
+
+  packages/integrations/codex:
+    dependencies:
+      '@vibestick/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  packages/integrations/terminal:
+    dependencies:
+      '@vibestick/integration-clipboard':
+        specifier: workspace:*
+        version: link:../clipboard
 
   packages/prompt-normalizer:
     dependencies:

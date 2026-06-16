@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@vibestick/audio": "workspace:*",
+    "@vibestick/integration-clipboard": "workspace:*",
+    "@vibestick/integration-terminal": "workspace:*",
     "@vibestick/prompt-normalizer": "workspace:*",
     "@vibestick/protocol": "workspace:*",
     "@vibestick/status-store": "workspace:*",
