@@ -1,0 +1,47 @@
+[
+  {
+    "name": "zh mixed -> claude, preserves identifiers, strips filler",
+    "transcript": "嗯，帮我给 auth.ts 加个 README，然后修复那个 callback 的 bug，发给 Claude",
+    "target": "claude",
+    "action": "send",
+    "risk": "low",
+    "mustContain": ["auth.ts", "callback", "README"],
+    "mustNotContain": ["嗯"],
+    "needsClarification": false
+  },
+  {
+    "name": "copy only -> clipboard",
+    "transcript": "把这段复制到剪贴板就行，不要发送",
+    "target": "clipboard",
+    "action": "copy_only"
+  },
+  {
+    "name": "status query",
+    "transcript": "查看一下 Codex 现在的状态",
+    "action": "status_query",
+    "intent": "status"
+  },
+  {
+    "name": "high risk: git push + deploy",
+    "transcript": "帮我 git push 到 main 然后部署上线",
+    "risk": "high"
+  },
+  {
+    "name": "resume last",
+    "transcript": "用上次那个 prompt 继续",
+    "action": "resume_last"
+  },
+  {
+    "name": "only fillers -> needs clarification",
+    "transcript": "嗯，那个，呃",
+    "needsClarification": true
+  },
+  {
+    "name": "english -> codex",
+    "transcript": "um, can you add a readme file and fix the auth callback, send to codex",
+    "target": "codex",
+    "action": "send",
+    "mustContain": ["readme", "auth", "callback"],
+    "mustNotContain": ["um "]
+  }
+]

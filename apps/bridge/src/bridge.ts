@@ -12,10 +12,11 @@ import {
   type VibeTask,
 } from '@vibestick/protocol';
 import { StatusStore, deviceStateForTask, type Draft } from '@vibestick/status-store';
+import { AudioAccumulator } from '@vibestick/audio';
 import { loadConfig, type BridgeConfig } from './config';
 import { PairingStore } from './pairing';
 import { advertise, type MdnsHandle } from './mdns';
-import { MockPipeline, type VoicePipeline } from './pipeline';
+import { createPipeline, PipelineError } from './pipeline';
 
 export interface Bridge {
   config: BridgeConfig;
@@ -32,14 +33,21 @@ function targetToAgent(t: Target): AgentKind {
   return 'unknown';
 }
 
+function toBuffer(data: RawData): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return Buffer.from(data as ArrayBuffer);
+}
+
 export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promise<Bridge> {
   const config = loadConfig(overrides);
   const store = new StatusStore();
   const pairing = new PairingStore(config.stateDir);
-  const pipeline: VoicePipeline = new MockPipeline();
+  const pipeline = createPipeline();
 
   const clients = new Set<WebSocket>();
   const sessionTarget = new Map<WebSocket, number>();
+  const sessionAudio = new Map<WebSocket, AudioAccumulator>();
 
   const send = (ws: WebSocket, m: BridgeToDevice): void => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
@@ -60,6 +68,22 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
       clarificationQuestion: d.clarificationQuestion,
     });
     send(ws, { type: 'state.update', state: 'draft_preview' });
+  };
+  const runPipeline = async (ws: WebSocket, pcm: Buffer | null): Promise<void> => {
+    send(ws, { type: 'state.update', state: 'transcribing' });
+    try {
+      const draft = await pipeline.process(pcm, currentTarget(ws));
+      store.addDraft(draft);
+      sendDraft(ws, draft);
+    } catch (e) {
+      const code = e instanceof PipelineError ? e.code : 'PIPELINE_ERROR';
+      send(ws, { type: 'error', code, message: (e as Error).message });
+      send(ws, {
+        type: 'state.update',
+        state: deviceStateForTask(store.currentTask),
+        task: store.currentTask,
+      });
+    }
   };
 
   // Push every task change to all connected devices.
@@ -112,13 +136,13 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
         }
         break;
       case 'audio.start':
+        sessionAudio.set(ws, new AudioAccumulator());
         send(ws, { type: 'state.update', state: 'streaming' });
         break;
       case 'audio.stop': {
-        send(ws, { type: 'state.update', state: 'transcribing' });
-        const draft = await pipeline.process(null, currentTarget(ws));
-        store.addDraft(draft);
-        sendDraft(ws, draft);
+        const pcm = sessionAudio.get(ws)?.pcm() ?? null;
+        sessionAudio.delete(ws);
+        await runPipeline(ws, pcm);
         break;
       }
       case 'draft.action': {
@@ -134,10 +158,7 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
             source: 'manual',
           });
         } else if (msg.action === 'retry') {
-          send(ws, { type: 'state.update', state: 'transcribing' });
-          const draft = await pipeline.process(null, currentTarget(ws));
-          store.addDraft(draft);
-          sendDraft(ws, draft);
+          await runPipeline(ws, null);
         } else if (msg.action === 'restore_last') {
           const d = store.recallDraft(1);
           if (d) sendDraft(ws, d);
@@ -158,16 +179,21 @@ export async function startBridge(overrides: Partial<BridgeConfig> = {}): Promis
   const wss = new WebSocketServer({ host: config.host, port: config.wsPort });
   wss.on('connection', (ws) => {
     clients.add(ws);
-    ws.on('message', (data: RawData) => {
+    ws.on('message', (data: RawData, isBinary: boolean) => {
+      if (isBinary) {
+        sessionAudio.get(ws)?.append(toBuffer(data));
+        return;
+      }
       try {
         void handle(ws, JSON.parse(data.toString()) as DeviceToBridge);
       } catch {
-        /* ignore malformed/binary frames */
+        /* ignore malformed frames */
       }
     });
     ws.on('close', () => {
       clients.delete(ws);
       sessionTarget.delete(ws);
+      sessionAudio.delete(ws);
     });
   });
 
